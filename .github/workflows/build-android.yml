@@ -105,13 +105,15 @@ jobs:
             echo "::warning::No ANDROID_DEBUG_KEYSTORE_B64 secret: this APK gets a new signing key"
           fi
 
-      # Before the long native build, so a failing test shows in minutes.
+      - name: Pinned dependencies and patches
+        run: python tools/setup_repo.py
+
+      # After setup_repo (the app compiles against the SDL3 submodule's Java
+      # classes) and before the long native build, so a failing test shows
+      # in minutes.
       - name: JVM unit tests
         working-directory: os/android
         run: ./gradlew --no-daemon :app:testDebugUnitTest
-
-      - name: Pinned dependencies and patches
-        run: python tools/setup_repo.py
 
       - name: Vulkan driver proxy
         run: |
