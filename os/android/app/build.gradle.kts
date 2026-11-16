@@ -29,6 +29,18 @@ android {
         versionCode   = 18
         versionName   = "0.5.9.3"
 
+        // -PlibertyAppIdSuffix=.s24test installs a test build next to the
+        // regular app instead of over it: its own data folder, so the
+        // installed game and saves of the regular app stay untouched, and no
+        // uninstall is needed when the two are signed with different keys.
+        val appIdSuffix = (project.findProperty("libertyAppIdSuffix") as String?).orEmpty()
+        require(appIdSuffix.isEmpty() || Regex("""\.[a-z][a-z0-9_]*""").matches(appIdSuffix)) {
+            "libertyAppIdSuffix must look like .name, got '$appIdSuffix'"
+        }
+        applicationIdSuffix = appIdSuffix
+        manifestPlaceholders["appLabel"] =
+            if (appIdSuffix.isEmpty()) "@string/app_name" else "Liberty Recompiled (test)"
+
         ndk {
             abiFilters += listOf("arm64-v8a")
         }

@@ -1,0 +1,143 @@
+name: Android APK
+
+# Builds the arm64 APK the way docs/android/BUILDING.md does, on a Windows
+# runner with Git Bash (the Android scripts need cygpath and the Windows host
+# shader tools). Run it from the Actions tab ("Run workflow").
+#
+# Signing: with the repository secret ANDROID_DEBUG_KEYSTORE_B64 (a base64
+# debug.keystore, alias androiddebugkey, passwords "android"), every run signs
+# with the same key, so a new build installs over the previous one without an
+# uninstall. Without it each run gets a new key.
+
+on:
+  # A push to a test branch builds it; "Run workflow" (workflow_dispatch)
+  # only appears once this file is on the default branch.
+  push:
+    branches: ['s24-*']
+    paths-ignore: ['docs/**', '**/*.md']
+  workflow_dispatch:
+    inputs:
+      app_id_suffix:
+        description: >-
+          Application ID suffix. ".s24test" installs next to the regular app
+          (separate data, the regular install and saves stay untouched).
+          Empty builds com.libertyrecomp itself.
+        required: false
+        default: ".s24test"
+      build_type:
+        description: CMake build type
+        type: choice
+        options: [Release, RelWithDebInfo]
+        default: Release
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: windows-2022
+    timeout-minutes: 360
+    defaults:
+      run:
+        shell: bash
+    env:
+      BUILD_TYPE: ${{ inputs.build_type || 'Release' }}
+      # Pushes build the side-by-side test app; a manual run uses its input as given.
+      APP_ID_SUFFIX: ${{ github.event_name == 'workflow_dispatch' && inputs.app_id_suffix || (github.event_name != 'workflow_dispatch' && '.s24test' || '') }}
+      NDK_VER: 29.0.14206865
+
+    steps:
+      - name: Allow long paths
+        run: git config --system core.longpaths true
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: CMake and Ninja
+        run: python -m pip install 'cmake>=3.29,<4' ninja
+
+      - name: Android SDK packages (NDK r29, platform 35)
+        run: |
+          SDK="$(cygpath -u "$ANDROID_HOME")"
+          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager.bat" --licenses > /dev/null || true
+          "$SDK/cmdline-tools/latest/bin/sdkmanager.bat" --install \
+            "ndk;$NDK_VER" "platforms;android-35" "build-tools;35.0.0" "platform-tools" > /dev/null
+          ls "$SDK/ndk"
+          # The scripts expect Git Bash paths (as env.sh derives them locally).
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          echo "JAVA_HOME=$(cygpath -u "$JAVA_HOME")" >> "$GITHUB_ENV"
+          df -h . || true
+
+      - name: Fixed debug signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_DEBUG_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            mkdir -p "$USERPROFILE/.android"
+            printf '%s' "$KEYSTORE_B64" | base64 -d > "$USERPROFILE/.android/debug.keystore"
+            echo "using the repository's debug keystore"
+          else
+            echo "::warning::No ANDROID_DEBUG_KEYSTORE_B64 secret: this APK gets a new signing key"
+          fi
+
+      - name: Pinned dependencies and patches
+        run: python tools/setup_repo.py
+
+      - name: Vulkan driver proxy
+        run: bash os/android/scripts/build_driver_proxy.sh
+
+      - name: Native build
+        run: |
+          mkdir -p out
+          # 4 vCPUs, 16 GB: the generated game sources are large per file.
+          STRIP=1 bash os/android/scripts/build_native.sh 3 2>&1 | tee out/native-build.log
+          exit "${PIPESTATUS[0]}"
+
+      - name: JVM unit tests
+        working-directory: os/android
+        run: ./gradlew --no-daemon :app:testDebugUnitTest
+
+      - name: Package APK
+        run: |
+          rm -f os/android/app/build/outputs/apk/debug/app-debug.apk
+          # Gradle reads ORG_GRADLE_PROJECT_<name> as the project property <name>.
+          if [ -n "$APP_ID_SUFFIX" ]; then
+            export ORG_GRADLE_PROJECT_libertyAppIdSuffix="$APP_ID_SUFFIX"
+          fi
+          bash os/android/scripts/build_apk.sh debug
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner.bat" verify --print-certs \
+            os/android/app/build/outputs/apk/debug/app-debug.apk | head -3
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: liberty-recomp-android-${{ github.sha }}
+          path: os/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs-${{ github.sha }}
+          path: |
+            out/native-build.log
+            os/android/app/build/reports/tests/
+          if-no-files-found: ignore
