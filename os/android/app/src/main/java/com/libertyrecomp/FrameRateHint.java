@@ -33,6 +33,22 @@ final class FrameRateHint {
         return frameLimit;
     }
 
+    /** Touch boost stays on only when the game asks for no particular rate. */
+    static boolean touchBoostEnabled(float frameLimit) {
+        return requestedRate(frameLimit) == 0f;
+    }
+
+    /**
+     * Window.setFrameRateBoostOnTouchEnabled (Android 15+). Returns whether
+     * the call was made; older versions have no such boost control.
+     */
+    static boolean setTouchBoost(android.view.Window window, boolean enabled) {
+        if (Build.VERSION.SDK_INT < 35 || window == null) return false;
+        if (window.getFrameRateBoostOnTouchEnabled() == enabled) return false;
+        window.setFrameRateBoostOnTouchEnabled(enabled);
+        return true;
+    }
+
     /** Applies {@code frameLimit} to {@code surface}; returns one of the constants above. */
     static int apply(Surface surface, float frameLimit) {
         if (Build.VERSION.SDK_INT < 30) return UNSUPPORTED;

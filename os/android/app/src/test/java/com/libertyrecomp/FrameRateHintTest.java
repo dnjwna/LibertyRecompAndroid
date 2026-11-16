@@ -21,4 +21,12 @@ public class FrameRateHintTest {
         assertEquals(0f, FrameRateHint.requestedRate(Float.NaN), 0f);
         assertEquals(0f, FrameRateHint.requestedRate(1000f), 0f);
     }
+
+    @Test
+    public void touchBoostOnlyWithoutAFrameLimit() {
+        org.junit.Assert.assertFalse(FrameRateHint.touchBoostEnabled(30f));
+        org.junit.Assert.assertFalse(FrameRateHint.touchBoostEnabled(60f));
+        org.junit.Assert.assertTrue(FrameRateHint.touchBoostEnabled(0f));
+        org.junit.Assert.assertTrue(FrameRateHint.touchBoostEnabled(-1f));
+    }
 }

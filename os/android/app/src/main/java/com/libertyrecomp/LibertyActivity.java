@@ -230,6 +230,16 @@ public class LibertyActivity extends SDLActivity {
         if (result == FrameRateHint.APPLIED) {
             Log.i(TAG, "frame rate hint: " + (fps > 0f ? fps + " FPS" : "none"));
         }
+        // Android 15+ raises the panel to its highest refresh rate while the
+        // screen is touched, over the surface's own request. With the
+        // on-screen gamepad the screen is touched all the time, so a 30 FPS
+        // game ran on a 120 Hz panel and its frames landed 3, 4 or 5
+        // refreshes apart (measured on a Galaxy S24). Keep the requested rate
+        // while a frame limit is set; an unlocked game keeps the boost.
+        boolean boost = FrameRateHint.touchBoostEnabled(fps);
+        if (FrameRateHint.setTouchBoost(getWindow(), boost)) {
+            Log.i(TAG, "touch refresh boost " + (boost ? "on" : "off"));
+        }
     }
 
     @Override
