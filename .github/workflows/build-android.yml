@@ -105,6 +105,11 @@ jobs:
             echo "::warning::No ANDROID_DEBUG_KEYSTORE_B64 secret: this APK gets a new signing key"
           fi
 
+      # Before the long native build, so a failing test shows in minutes.
+      - name: JVM unit tests
+        working-directory: os/android
+        run: ./gradlew --no-daemon :app:testDebugUnitTest
+
       - name: Pinned dependencies and patches
         run: python tools/setup_repo.py
 
@@ -120,10 +125,6 @@ jobs:
           # 4 vCPUs, 16 GB: the generated game sources are large per file.
           STRIP=1 bash os/android/scripts/build_native.sh 3 2>&1 | tee out/native-build.log
           exit "${PIPESTATUS[0]}"
-
-      - name: JVM unit tests
-        working-directory: os/android
-        run: ./gradlew --no-daemon :app:testDebugUnitTest
 
       - name: Package APK
         run: |

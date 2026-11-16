@@ -8,6 +8,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Map;
@@ -144,10 +147,20 @@ final class DriverTrust {
             out.write(text.toString().getBytes(StandardCharsets.UTF_8));
             out.getFD().sync();
         }
-        if (!temporary.renameTo(mStore)) {
+        // File.renameTo does not replace an existing file on every platform
+        // (Windows refuses), so move with REPLACE_EXISTING; atomic where the
+        // file system can (it can on Android's ext4/f2fs).
+        try {
+            try {
+                Files.move(temporary.toPath(), mStore.toPath(),
+                        StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            } catch (AtomicMoveNotSupportedException e) {
+                Files.move(temporary.toPath(), mStore.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            }
+        } catch (IOException e) {
             //noinspection ResultOfMethodCallIgnored
             temporary.delete();
-            throw new IOException("cannot replace " + mStore);
+            throw new IOException("cannot replace " + mStore, e);
         }
     }
 }
