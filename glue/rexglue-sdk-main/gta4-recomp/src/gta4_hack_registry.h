@@ -126,6 +126,8 @@ inline constexpr auto kRegistry = std::to_array<Entry>({
     {"android_perf_hint_target_ms", Kind::kSetting, "", "performance hint target"},
     {"android_gpu_turbo", Kind::kSetting, "false", "GPU held at its highest clock"},
     {"android_thermal_guard", Kind::kGameplay, "false", "draw distance lowered when hot"},
+    {"android_thermal_guard_headroom_hot", Kind::kSetting, "", "thermal guard start headroom"},
+    {"android_thermal_guard_headroom_cool", Kind::kSetting, "", "thermal guard end headroom"},
     {"android_thermal_guard_hot_c", Kind::kSetting, "", "thermal guard start temperature"},
     {"android_thermal_guard_cool_c", Kind::kSetting, "", "thermal guard end temperature"},
     {"android_thermal_log", Kind::kDiagnostic, "", ""},

@@ -1150,7 +1150,7 @@ public class LauncherActivity extends Activity {
      * device can keep. On Adreno the developer's tuning (guard off) stays.
      */
     static boolean thermalGuardDefault() {
-        return !new File("/dev/kgsl-3d0").exists() && !new File("/sys/class/kgsl").exists();
+        return !DeviceProfile.isAdreno();
     }
 
     private android.content.SharedPreferences perfTestPreferences() {

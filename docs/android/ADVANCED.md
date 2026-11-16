@@ -122,7 +122,17 @@ panel, with FSR's sharpening look.
 | `--gta4_native_vertex_cache_order=true` | Default on. Reorders triangles of opaque draws for the GPU vertex cache on a background thread. Same image, slightly less GPU time. Live. |
 | `--android_frame_rate_hint=true` | Default on. Asks Android for a display refresh rate that is a multiple of the frame limit (`Surface.setFrameRate`, Android 11+), so adaptive 90/120 Hz panels (Samsung "Adaptive" motion smoothness, LTPO phones) show every frame for the same number of refreshes instead of juddering. Follows the in-game frame limit live; an unlocked limit clears the request. While a limit is set, Android 15+ is also told not to raise the refresh rate on touch (`Window.setFrameRateBoostOnTouchEnabled(false)`): with the on-screen gamepad the boost otherwise keeps the panel at 120 Hz and the frames land unevenly. Live. |
 | `--android_perf_hint=true` | Default on. Reports each frame's CPU work to Android's performance hint API (Android 13+) so clocks follow the frame budget instead of running at the maximum. The budget follows the frame limit: 90% of its period, at most `--android_perf_hint_target_ms` (default 30). On Android 14+ the session moves to the busiest threads instead of being recreated. Live. |
-| `--android_thermal_guard` | Set by the launcher's **Thermal guard** check box: lowers the draw distance when Android forecasts throttling and restores it after cooling down. On by default for GPUs other than Adreno (Samsung Xclipse, Mali). |
+| `--android_thermal_guard` | Set by the launcher's **Thermal guard** check box: when Android forecasts throttling it lowers the draw distance and, unless you set `--gta4_fps_guard` yourself, turns the FPS guard on (2); both are restored after cooling down. On by default for GPUs other than Adreno (Samsung Xclipse, Mali). |
+| `--android_thermal_guard_headroom_hot=0.95` / `_cool=0.75` | Forecast thermal headroom (1.0 = the device throttles) at which the guard acts and restores. Live. |
+
+**Defaults for GPUs other than Adreno.** On devices without the Adreno (KGSL) GPU, such as Samsung
+Xclipse and Mali phones, the app adds these lines unless `args.txt` already sets the same setting
+(your own line always wins). They come from measurements on a Galaxy S24, which throttled its CPU
+from 2.9 to 1.25 GHz within four minutes and then had audio gaps in busy scenes:
+`--kernel_spinlock_spins=0` (no CPU spinning on contended guest locks),
+`--audio_maxqframes=48` (more audio buffered), and a thermal guard that acts earlier
+(`--android_thermal_guard_headroom_hot=0.85`, `_cool=0.70`). The launch log (`adb logcat -s
+LibertyRecomp`) lists the defaults that were added.
 | `--android_pin_hot_threads=false` | Default off. Keeps the busiest threads on the big CPU cores. It made those threads faster on the Retroid Pocket 5 but did not raise the frame rate. Live. |
 | `--install_game_source=PATH` / `--install_update_source=PATH` | Installation sources, instead of the `install/` folder. |
 | `--audio_maxqframes=32` | Audio blocks queued ahead of playback (1-64, each ~5.3 ms), which is also the audio delay. Default 32 (~170 ms) on Android since 0.5.7.7; it was 64 (~340 ms behind the picture). 16 (~85 ms) is tighter but can stutter during frame hitches on slower devices; raise it if the sound crackles. *Restart.* |

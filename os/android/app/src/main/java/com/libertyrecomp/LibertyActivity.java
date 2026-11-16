@@ -342,6 +342,11 @@ public class LibertyActivity extends SDLActivity {
         // "Play (Debug Log)" from the launcher: the runtime logs at info level
         // and the whole process log is recorded into files/debug_logs/.
         applyPerformanceTestArguments(arguments);
+        if (!DeviceProfile.isAdreno()) {
+            List<String> added = DeviceProfile.addMissing(arguments,
+                    DeviceProfile.NON_ADRENO_DEFAULTS);
+            Log.i(TAG, "non-Adreno defaults: " + (added.isEmpty() ? "none (all set in args.txt)" : added));
+        }
         mDebugLog = getIntent() != null && getIntent().getBooleanExtra(EXTRA_DEBUG_LOG, false);
         if (mDebugLog) {
             arguments.removeIf(a -> a.startsWith("--diagnostics") || a.startsWith("--log_level"));

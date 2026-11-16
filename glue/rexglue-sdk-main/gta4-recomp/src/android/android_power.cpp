@@ -55,6 +55,13 @@ REXCVAR_DEFINE_DOUBLE(android_perf_hint_target_ms, 30.0, "GTA IV/Performance",
 REXCVAR_DEFINE_BOOL(android_thermal_guard, false, "GTA IV/Performance",
                     "Lower the draw distance when Android forecasts thermal throttling and "
                     "restore it after the device has cooled down");
+REXCVAR_DEFINE_DOUBLE(android_thermal_guard_headroom_hot, 0.95, "GTA IV/Performance",
+                      "Thermal guard: forecast thermal headroom (10 s ahead; 1.0 = throttling) "
+                      "that lowers the draw distance")
+    .range(0.5, 1.2);
+REXCVAR_DEFINE_DOUBLE(android_thermal_guard_headroom_cool, 0.75, "GTA IV/Performance",
+                      "Thermal guard: forecast thermal headroom that restores the draw distance")
+    .range(0.3, 1.1);
 REXCVAR_DEFINE_DOUBLE(android_thermal_guard_hot_c, 78.0, "GTA IV/Performance",
                       "Thermal guard without thermal headroom: GPU temperature (C) that lowers "
                       "the draw distance")
@@ -65,6 +72,8 @@ REXCVAR_DEFINE_DOUBLE(android_thermal_guard_cool_c, 68.0, "GTA IV/Performance",
     .range(40.0, 100.0);
 
 REXCVAR_DECLARE(double, gta4_draw_distance_scale);
+// gta4_fps_guard belongs to the renderer plugin (librexgpu-gta4-native.so),
+// not libmain: reach it by name through the shared cvar registry.
 REXCVAR_DECLARE(uint32_t, gta4_frame_limit);
 
 namespace {
@@ -184,6 +193,7 @@ void PowerLoop() {
   float headroom = __builtin_nanf("");
   float gpu_temperature = __builtin_nanf("");
   double guard_saved_scale = 0.0;  // the draw distance the guard lowered; 0 = not lowered
+  uint32_t guard_saved_fps_guard = 0;  // gta4_fps_guard before the guard engaged
   double reported_sum_ms = 0.0;
   uint32_t reported = 0;
 
@@ -225,8 +235,12 @@ void PowerLoop() {
       gpu_temperature = GpuTemperature();
       bool hot = false, cool = false;
       if (headroom == headroom) {
-        hot = headroom >= 0.95f;
-        cool = headroom <= 0.75f;
+        const double hot_at = REXCVAR_GET(android_thermal_guard_headroom_hot);
+        // Restoring needs a real gap below the trigger, or the guard would flap.
+        const double cool_at =
+            std::min(REXCVAR_GET(android_thermal_guard_headroom_cool), hot_at - 0.05);
+        hot = headroom >= hot_at;
+        cool = headroom <= cool_at;
       } else if (gpu_temperature == gpu_temperature) {
         hot = gpu_temperature >= REXCVAR_GET(android_thermal_guard_hot_c);
         cool = gpu_temperature <= REXCVAR_GET(android_thermal_guard_cool_c);
@@ -237,11 +251,18 @@ void PowerLoop() {
             guard_saved_scale = REXCVAR_GET(gta4_draw_distance_scale);
             const double lowered = std::max(0.5, guard_saved_scale * 0.7);
             rex::cvar::SetFlagByName("gta4_draw_distance_scale", std::to_string(lowered));
+            // Also let the renderer skip environment reflection updates in
+            // frames that run long, unless the player set the FPS guard.
+            // "" (plugin not loaded) parses as 0 and the set below is a no-op.
+            guard_saved_fps_guard =
+                uint32_t(std::strtoul(rex::cvar::GetFlagByName("gta4_fps_guard").c_str(), nullptr, 10));
+            if (guard_saved_fps_guard == 0) rex::cvar::SetFlagByName("gta4_fps_guard", "2");
             __android_log_print(ANDROID_LOG_WARN, "LibertyRecomp",
                                 "thermal-guard: headroom %.2f gpu %.1fC, draw distance %.2f -> %.2f",
                                 headroom, gpu_temperature, guard_saved_scale, lowered);
           } else if (guard_saved_scale && cool) {
             rex::cvar::SetFlagByName("gta4_draw_distance_scale", std::to_string(guard_saved_scale));
+            if (guard_saved_fps_guard == 0) rex::cvar::SetFlagByName("gta4_fps_guard", "0");
             __android_log_print(ANDROID_LOG_WARN, "LibertyRecomp",
                                 "thermal-guard: headroom %.2f gpu %.1fC, draw distance restored to %.2f",
                                 headroom, gpu_temperature, guard_saved_scale);
@@ -249,6 +270,7 @@ void PowerLoop() {
           }
         } else if (guard_saved_scale && !REXCVAR_GET(android_thermal_guard)) {
           rex::cvar::SetFlagByName("gta4_draw_distance_scale", std::to_string(guard_saved_scale));
+          if (guard_saved_fps_guard == 0) rex::cvar::SetFlagByName("gta4_fps_guard", "0");
           guard_saved_scale = 0.0;
         }
       }

@@ -10,8 +10,8 @@ import android.view.Surface;
  * <p>{@link Surface#FRAME_RATE_COMPATIBILITY_FIXED_SOURCE} says the content
  * runs at exactly this rate, so the system prefers a refresh rate that is an
  * integer multiple of it (60 or 120 Hz for 30 FPS) instead of the adaptive
- * panel's own heuristics. The default seamless-only strategy is kept: the
- * system never blanks the screen to switch modes because of this hint.</p>
+ * panel's own heuristics. On Android 12+ the switch is requested even when it
+ * is not seamless (a mode change may blank the screen for a moment).</p>
  */
 final class FrameRateHint {
 
@@ -54,10 +54,20 @@ final class FrameRateHint {
         if (Build.VERSION.SDK_INT < 30) return UNSUPPORTED;
         if (surface == null || !surface.isValid()) return INVALID_SURFACE;
         float rate = requestedRate(frameLimit);
+        int compatibility = rate > 0f
+                ? Surface.FRAME_RATE_COMPATIBILITY_FIXED_SOURCE
+                : Surface.FRAME_RATE_COMPATIBILITY_DEFAULT;
         try {
-            surface.setFrameRate(rate, rate > 0f
-                    ? Surface.FRAME_RATE_COMPATIBILITY_FIXED_SOURCE
-                    : Surface.FRAME_RATE_COMPATIBILITY_DEFAULT);
+            if (Build.VERSION.SDK_INT >= 31) {
+                // With the default (seamless-only) strategy a Galaxy S24 mostly stayed at
+                // 120 Hz for a 30 FPS game; ALWAYS lets the system switch
+                // the panel mode even when that switch is not seamless.
+                surface.setFrameRate(rate, compatibility,
+                        rate > 0f ? Surface.CHANGE_FRAME_RATE_ALWAYS
+                                  : Surface.CHANGE_FRAME_RATE_ONLY_IF_SEAMLESS);
+            } else {
+                surface.setFrameRate(rate, compatibility);
+            }
             return APPLIED;
         } catch (IllegalArgumentException | IllegalStateException e) {
             // A surface released between isValid() and the call, or a rate
